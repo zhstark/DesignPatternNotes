@@ -31,3 +31,53 @@
 - 函数的命名不能暴露任何实现细节。比如，`uploadToAliyun()` 应该改为 `upload()`
 - 封装具体的实现细节。比如，跟阿里云相关的特殊上传（下载）流程不应该暴露给调用者。我们对上传（下载）流程进行封装，对外提供一个包裹所有上传（下载）细节的方法，给调用者使用。
 - 从实现类定义抽象的接口。具体的实现类都依赖统一的接口定义。
+
+## 多用组合少用继承
+
+**少用继承**是怕继承层次过深，这时继承关系复杂，会影响到代码的可读性和可维护性。
+
+比如抽象类「鸟」，有会飞的，不会飞的，会叫的，不会叫的，会下蛋的，不会下蛋的，
+
+![Figure1](images/3f99fa541e7ec7656a1dd35cc4f28bc6.webp)
+
+通过组合（composition）、接口、委托（delegation）三个技术手段，可以解决继承存在的问题。
+
+用接口来判定会不会飞、叫、下蛋。如果每个鸟的飞实现都一样，再定义其实现类（Java8 之后可以用接口的 Default），用组合方式来消除代码重复。
+
+```Java
+public interface Flyable {
+  void fly();
+}
+
+public interface Tweetable {
+  void tweet();
+}
+
+public interface EggLayable {
+  void layEgg();
+}
+
+public class FlyAbility implements Flyable {
+     @Override 
+     public void fly() { //... }
+}
+
+// 省略 TweetAbility，EggLayAbility
+
+public class Ostrich implements Tweetable, EggLayable {//鸵鸟
+    private TweetAbility tweetAbility = new TweetAbility(); //组合
+    private EggLayAbility eggLayAbility = new EggLayAbility(); //组合 
+    //... 省略其他属性和方法... 
+    @Override 
+    public void tweet() { 
+        tweetAbility.tweet(); // 委托 
+    } 
+
+    @Override 
+    public void layEgg() { 
+        eggLayAbility.layEgg(); // 委托 
+    }
+}
+```
+
+继承有三个作用：表示 is-a 关系，支持多态，代码复用。is-a 关系可以通过组合和接口的 has-a 关系来代替；多态可以利用接口实现；代码复用可以通过组合和委托实现。
