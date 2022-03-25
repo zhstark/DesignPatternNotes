@@ -112,3 +112,245 @@ Single Responsibility Principle。A class or module should have a single respons
 - 私有方法过多，就要考虑能否将私有方法独立到新的类中，设置为 public 方法，供更多的类使用
 - 比较难给类起一个合适名字，很难用一个业务名词概括，或者只能用一些笼统的 Manager、Context 之类的词语来命名，说明类的职责定义的可能不够清晰
 - 类中大量的方法都是集中操作类中的某几个属性。比如，在 UserInfo 中，如果一般的方法都是在操作 address 信息，那就可以考虑将这几个属性和对应的方法拆分出来。
+
+### 开闭原则（OCP）
+
+Open Closed Principle。Software entities (modules, classes, functions, etc) should be open for extension, but closed for modification。
+
+添加一个新的功能应该是，在已有代码基础上扩展代码（新增模块、类、方法等），而非修改已有代码（修改模块、类、方法等）
+
+举例：API 接口监控告警的代码，其中，`AlertRule`存储告警规则，可以自由设置。`Notification`是告警通知类，支持邮件、短信等多种通知渠道。`NotificationEmergencyLevel` 表示通知的紧急程度，包括 SEVERE（严重）、URGENCY（紧急）、NORMAL（普通）、TRIVIAL（无关紧要），不同的紧急程度对应不同的发送渠道。
+
+```Java
+public class Alert {
+  private AlertRule rule;
+  private Notification notification;
+
+  public Alert(AlertRule rule, Notification notification) {
+    this.rule = rule;
+    this.notification = notification;
+  }
+
+  public void check(String api, long requestCount, long errorCount, long durationOfSeconds) {
+    long tps = requestCount / durationOfSeconds;
+    if (tps > rule.getMatchedRule(api).getMaxTps()) {
+      notification.notify(NotificationEmergencyLevel.URGENCY, "...");
+    }
+    if (errorCount > rule.getMatchedRule(api).getMaxErrorCount()) {
+      notification.notify(NotificationEmergencyLevel.SEVERE, "...");
+    }
+  }
+}
+```
+
+现在，如果我们需要添加一个功能，当每秒钟接口超时请求个数，超过某个预先设置的最大阈值时，我们也要触发告警发送通知.
+
+```Java
+public class Alert {
+  // ...省略AlertRule/Notification属性和构造函数...
+  
+  // 改动一：添加参数timeoutCount
+  public void check(String api, long requestCount, long errorCount, long timeoutCount, long durationOfSeconds) {
+    long tps = requestCount / durationOfSeconds;
+    if (tps > rule.getMatchedRule(api).getMaxTps()) {
+      notification.notify(NotificationEmergencyLevel.URGENCY, "...");
+    }
+    if (errorCount > rule.getMatchedRule(api).getMaxErrorCount()) {
+      notification.notify(NotificationEmergencyLevel.SEVERE, "...");
+    }
+    // 改动二：添加接口超时处理逻辑
+    long timeoutTps = timeoutCount / durationOfSeconds;
+    if (timeoutTps > rule.getMatchedRule(api).getMaxTimeoutTps()) {
+      notification.notify(NotificationEmergencyLevel.URGENCY, "...");
+    }
+  }
+}
+```
+
+上面代码对接口进行了修改，意味着调用这个接口的代码都要做相应的修改，相应的单元测试也要修改。显然是不符合「开闭原则」的。
+
+如何通过「扩展」的方式来实现同样的功能呢？
+
+重构一下 Alert 的代码，让它的扩展性更好一些。重构的内容主要包含两个部分：
+1. 将 `check()` 函数的多个入参封装成`ApiStatInfo`类
+2. 引入 `handler` 的概念，将 `if` 逻辑判断分散到各个 `handler` 中。
+
+```Java
+public class Alert {
+  private List<AlertHandler> alertHandlers = new ArrayList<>();
+
+  public void addAlertHandler(AlertHandler alertHandler) {
+    this.alertHandlers.add(alertHandler);
+  }
+
+  public check(ApiStatInfo apiStatInfo) {
+    for (AlertHandler handler : alertHandlers) {
+        handler.check(apiStatInfo);
+    }
+  }
+}
+
+public class ApiStatInfo { //省略constructor/getter/setter方法
+  private String api; 
+  private long requestCount; 
+  private long errorCount; 
+  private long durationOfSeconds;
+}
+
+public abstract class AlertHandler {
+  protected AlertRule rule;
+  protected Notification notification;
+  public AlertHandler(AlertRule rule, Notification notification) {
+    this.rule = rule;
+    this.notification = notification;
+  }
+
+  public abstract void check(ApiStatInfo apiStatInfo);
+}
+
+public class TpsAlertHandler extends AlertHandler {
+  public TpsAlertHandler(AlertRule rule, Notification notification) {
+    super(rule, notification);
+  }
+
+  @Override
+  public void check(ApiStatInfo apiStatInfo) {
+    long tps = apiStatInfo.getRequestCount()/ apiStatInfo.getDurationOfSeconds();
+    if (tps > rule.getMatchedRule(apiStatInfo.getApi()).getMaxTps()) {
+      notification.notify(NotificationEmergencyLevel.URGENCY, "...");
+    }
+  }
+}
+
+public class ErrorAlertHandler extends AlertHandler {
+  public ErrorAlertHandler(AlertRule rule, Notification notification){
+    super(rule, notification);
+  }
+
+  @Override
+  public void check(ApiStatInfo apiStatInfo) {
+    if (apiStatInfo.getErrorCount() > rule.getMatchedRule(apiStatInfo.getApi()).getMaxErrorCount()) {
+      notification.notify(NotificationEmergencyLevel.SEVERE, "...");
+    }
+  }
+}
+```
+
+Alert 的使用。其中 `ApplicationContext` 是一个单例类，负责 Alert 的创建、组装、初始化
+
+```Java
+public class ApplicationContext {
+  private AlertRule alertRule;
+  private Notification notification;
+  private Alert alert;
+
+  public void initializeBeans() {
+    alertRule = new AlertRule();
+    notification = new Notification();
+    alert = new Alert;
+    alert.addAlertHandler(new TpsAlertHandler(alertRule, notification));
+    alert.addAlertHandler(new ErrorAlertHandler(alertRule, notification));
+  }
+
+  // 饿汉式单例
+  private static final ApplicationContext instance = new ApplicationContext();
+  private ApplicationContext() {
+    initializeBeans();
+  }
+  public static ApplicationContext getInstance() {
+    return instance;
+  }
+
+  public Alert getAlert() {return alert;}
+}
+
+public class Demo {
+  public static void mian(String[] args) {
+    ApiStatInfo apiStatInfo = new ApiStatInfo();
+    // ...省略设置apiStatInfo数据值的代码 
+    ApplicationContext.getInstance().getAlert().check(apiStatInfo);
+  }
+}
+```
+
+重构之后，如果再添加上面讲到的新功能，需要改动的有下面四处：
+1. 在 ApiStatInfo 类中添加新的属性 timeoutCount。
+2. 添加新的 TimeoutAlertHandler 类
+3. 在 ApplicationContext 类的 initializeBeans() 方法中，往 alert 对象中注册新的 timeoutAlertHandler。
+4. 在使用 Alert 类的时候，需要给 check() 函数的入参 apiStatInfo 对象设置 timeoutCount 的值。
+
+```Java
+
+public class Alert { // 代码未改动... }
+public class ApiStatInfo {//省略constructor/getter/setter方法
+  private String api;
+  private long requestCount;
+  private long errorCount;
+  private long durationOfSeconds;
+  private long timeoutCount; // 改动一：添加新字段
+}
+public abstract class AlertHandler { //代码未改动... }
+public class TpsAlertHandler extends AlertHandler {//代码未改动...}
+public class ErrorAlertHandler extends AlertHandler {//代码未改动...}
+// 改动二：添加新的handler
+public class TimeoutAlertHandler extends AlertHandler {//省略代码...}
+
+public class ApplicationContext {
+  private AlertRule alertRule;
+  private Notification notification;
+  private Alert alert;
+  
+  public void initializeBeans() {
+    alertRule = new AlertRule(/*.省略参数.*/); //省略一些初始化代码
+    notification = new Notification(/*.省略参数.*/); //省略一些初始化代码
+    alert = new Alert();
+    alert.addAlertHandler(new TpsAlertHandler(alertRule, notification));
+    alert.addAlertHandler(new ErrorAlertHandler(alertRule, notification));
+    // 改动三：注册handler
+    alert.addAlertHandler(new TimeoutAlertHandler(alertRule, notification));
+  }
+  //...省略其他未改动代码...
+}
+
+public class Demo {
+  public static void main(String[] args) {
+    ApiStatInfo apiStatInfo = new ApiStatInfo();
+    // ...省略apiStatInfo的set字段代码
+    apiStatInfo.setTimeoutCount(289); // 改动四：设置tiemoutCount值
+    ApplicationContext.getInstance().getAlert().check(apiStatInfo);
+}
+```
+
+重构之后的代码更加灵活和易扩展。如果我们要想添加新的告警逻辑，只需要基于扩展的方式创建新的 handler 类即可，不需要改动原来的 check() 函数的逻辑。而且，我们只需要为新的 handler 类添加单元测试，老的单元测试都不会失败，也不用修改。
+
+方法：
+- 扩展意识、抽象意识、封装意识
+- 识别出代码可变部分和不可变部分，将可变部分封装起来，隔离变化，提供抽象化的不可变接口，给上层使用。
+
+假设代码中通过 Kafka 发送异步消息，对于这样的功能，要学会将其抽象成一组跟具体消息队列（Kafka）无关的异步消息接口。所有上层系统都依赖这组抽象的接口编程，并通过依赖注入的方式来调用。当要替换消息队列时，比如将 Kafka 替换成 RocketMQ，可以很方便地拔掉老的消息队列实现，插入新的消息队列实现。
+
+```Java
+public interface MessageQueue { 
+  //.... 
+}
+public class KafkaMessageQueue implements MessageQueue { // ... }
+public class RocketMQMessageQueue implements MessageQueue {//...}
+
+public interface MessageFormatter { //... }
+public class JsonMessageFormatter implements MessageFormatter {//...}
+public class ProtoBufMessageFormatter implements MessageFormatter {//...}
+
+public class Demo {
+  private MessageQueue msgQueue; // 基于接口而非实现编程
+  public Demo(MessageQueue msgQueue) { // 依赖注入
+    this.msgQueue = msgQueue;
+  }
+
+  // msgFormatter：多态、依赖注入
+  public void sendNotification(Notification notification, MessageFormatter msgFormatter) { 
+    //... 
+  }
+}
+```
+
+对于一些比较确定的、短期内可能就会扩展，或者需求改动对代码结构影响比较大的情况，或者实现成本不高的扩展点，在编写代码的时候之后，我们就可以事先做些扩展性设计。但对于一些不确定未来是否要支持的需求，或者实现起来比较复杂的扩展点，我们可以等到有需求驱动的时候，再通过重构代码的方式来支持扩展的需求。
