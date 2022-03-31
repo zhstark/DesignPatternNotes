@@ -372,3 +372,138 @@ Interface Segregation Principle. Clients should not be forced to depend upon int
 2. 单个 API 接口或函数
 3. OOP 中的接口概念
 
+### 依赖反转原则
+
+#### 控制反转 IOC
+
+Inversion of Control。
+
+举例说明什么是控制反转
+
+```Java
+public class UserServiceTest {
+  public static boolean doTest() {
+    // ... 
+  }
+  
+  public static void main(String[] args) {//这部分逻辑可以放到框架中
+    if (doTest()) {
+      System.out.println("Test succeed.");
+    } else {
+      System.out.println("Test failed.");
+    }
+  }
+}
+```
+
+上面代码中所有流程都是由程序员控制。现在抽象出一个框架，用框架来实现同样的功能：
+
+```Java
+public abstract class TestCase {
+  public void run() {
+    if (doTest()) {
+      System.out.println("Test succeed");
+    } else {
+      System.out.println("Test failed");
+    }
+  }
+
+  public abstract boolean doTest();
+}
+
+public class JunitApplication {
+  private static final List<TestCase> testCases = new ArrayList<>();
+
+  public static void register(TestCase testCase) {
+    testCases.add(testCase);
+  }
+
+  public static final void main(String[] args) {
+    for (TestCase case: testCases) {
+      case.run();
+    }
+  }
+}
+```
+
+把这个简化版本的测试框架引入到工程中之后，我们只需要在框架预留的扩展点，也就是 TestCase 类中的 doTest() 抽象函数中，填充具体的测试代码就可以实现之前的功能了。完全不需要在负责执行流程的 main() 函数了。
+
+```Java
+public class UserServiceTest extends TestCase {
+  @Override
+  public boolean doTest() {
+    //.....
+  }
+}
+
+// 注册操作还可以通过配置的方式来实现，不需要程序员显示调用register()
+JunitApplication.register(new UserServiceTest();
+```
+
+这就是通过框架来实现“控制反转”的例子。框架提供了一个可扩展的代码骨架，用来组装对象、管理整个执行流程。利用框架开发的时候，只需要往预留的扩展点上添加跟业务相关的代码，就可以利用框架来驱动整个程序流程的执行。
+
+这里的「控制」是指对程序执行流程的控制，而「反转」指的是在没有使用框架之前，程序员自己控制整个程序的执行。在使用框架之后，整个程序的执行流程可以通过框架来控制。流程的控制权从程序员“反转”到了框架。
+
+控制反转并不是一种具体的实现技巧，而是一个比较笼统的设计思想，一般用来指导框架层面的设计。
+
+#### 依赖注入（DI）
+
+Dependency Injection。
+
+依赖注入跟控制反转恰恰相反，它是一种具体的编码技巧。用一句话概括依赖注入就是：不通过 new() 的方式在类内部创建依赖类对象，而是将依赖的类对象在外部创建好之后，通过构造函数、函数参数等方式传递（或注入）给类使用。
+
+下面例子中 Notification 类负责消息推送，依赖 MessageSender 类实现推送商品促销、验证码等消息给用户。我们分别用依赖注入和非依赖注入两种方式来实现一下。
+
+**非依赖注入实现方式**
+```Java
+public class Notification {
+  private MessageSender messageSender;
+
+  public Notification() {
+    this.messageSender = new MessageSender();
+  }
+
+  public void sendMessage(String cellphone, String message) {
+    //...省略校验逻辑等...
+    this.messageSender.send(cellphone, message);
+  }
+}
+
+public class MessageSender {
+  public void send(String cellphone, String message) {
+    //....
+  }
+}
+
+// 使用 Notification
+Notification notification = new Notification();
+```
+
+**依赖注入的实现方式**
+
+```Java
+public class Notification {
+  private MessageSender messageSender;
+
+  // 通过构造函数将 messageSender 传递进来
+  public Notification(MessageSender messageSender) {
+    this.messageSender = messageSender;
+  }
+
+  public void sendMessage(String cellphone, String message) {
+    //...省略校验逻辑等...
+    this.messageSender.send(cellphone, message);
+  }
+}
+
+MessageSender messageSender = new MessageSender();
+Notification notification = new Notification(messageSender);
+```
+
+#### 依赖注入框架
+
+上面例子中，还是要通过 new 来创建 messageSender 对象。在实际的软件开发中，一些项目可能会涉及几十上百个类，类对象的创建和依赖注入也会变得非常复杂。而对象创建和依赖注入的工作，本身跟具体的业务无关，我们完全可以抽象成框架来自动完成。这个框架就是“依赖注入框架”。我们只需要通过依赖注入框架提供的扩展点，简单配置一下所有需要创建的类对象、类与类之间的依赖关系，就可以实现由框架来自动创建对象、管理对象的生命周期、依赖注入等原本需要程序员来做的事情。
+
+#### 依赖反转原则（DIP）
+
+High-level modules shouldn't depend on low-level modules. Both modules should depend on an abstractions. In addition, abstractions should depend on details. Details depend on abstractions.
