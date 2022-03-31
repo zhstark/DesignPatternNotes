@@ -362,3 +362,13 @@ Liskov Substitution Principle. If S is a subtype of T, then objects of type T ma
 子类对象能够替换程序中父类对象出现的任何地方，并且保证原来的逻辑行为不变及正确性不被破坏。
 
 里式替换原则还有另外一个更加能落地、更有指导意义的描述，叫“Design By Contract”，按照协议来设计。子类在设计的时候，要遵守父类的行为约定（或者叫协议）。父类定义了函数的行为约定，那子类可以改变函数的内部实现逻辑，但不能改变函数原有的行为约定，这里的行为约定包括：函数声明要实现的功能；对输入、输出、异常的约定；甚至包括注释中所罗列的任何特殊说明。
+
+### 接口隔离原则（ISP）
+
+Interface Segregation Principle. Clients should not be forced to depend upon interfaces that they do not use.
+
+这里面的“接口”，我们可以把它理解成下面三种东西：
+1. 一组 API 接口集合
+2. 单个 API 接口或函数
+3. OOP 中的接口概念
+
