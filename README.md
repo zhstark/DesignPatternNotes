@@ -507,3 +507,7 @@ Notification notification = new Notification(messageSender);
 #### 依赖反转原则（DIP）
 
 High-level modules shouldn't depend on low-level modules. Both modules should depend on an abstractions. In addition, abstractions should depend on details. Details depend on abstractions.
+
+高层模块不要依赖底层模块，高层模块和底层模块应该通过抽象来相互依赖。除此之外，抽象不要依赖具体实现细节，具体实现细节依赖抽象。
+
+这条原则主要还是用来指导框架层面的设计。
