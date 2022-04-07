@@ -511,3 +511,105 @@ High-level modules shouldn't depend on low-level modules. Both modules should de
 高层模块不要依赖底层模块，高层模块和底层模块应该通过抽象来相互依赖。除此之外，抽象不要依赖具体实现细节，具体实现细节依赖抽象。
 
 这条原则主要还是用来指导框架层面的设计。
+
+### 迪米特法则
+
+Law of Demeter.
+
+> Each unit should have only limited knowledge about other units: only units "closely" related to the current unit. Or: Each unit should only talk to its friends; Don't talk to strangers.
+
+我们可以吧模块替换成类：
+
+不该有直接依赖关系的类 之间，不要有依赖；有依赖关系的类之间，尽量只依赖必要的接口。
+
+举例说明“不该有直接依赖关系的类之间，不要有依赖”。
+
+这个例子实现了简化版的搜索引擎爬取网页的功能。代码中包含三个主要的类。其中，NetworkTransporter 类负责底层网络通信，根据请求获取数据；HtmlDownloader 类用来通过 URL 获取网页；Document 表示网页文档，后续的网页内容抽取、分词、索引都是以此为处理对象。具体的代码实现如下所示：
+
+```Java
+public class NetworkTransporter {
+    //......
+    public Byte[] send(HtmlRequest htmlRequest) {
+        //....
+    }
+}
+
+public class HtmlDownloader {
+    private NetworkTransporter transporter; //通过构造函数或 IOC 注入
+
+    public Html downloadHtml(String url) {
+        Byte[] rawHtml = transporter.send(new HtmlRequest(url));
+        return new Html(rawHtml);
+    }
+}
+
+public class Document {
+    private Html html;
+    private String url;
+
+    public Document(String url) {
+        this.url = url;
+        HtmlDownloader downloader = new HtmlDownloader();
+        this.html = downloader.downloaderHtml(url);
+    }
+}
+```
+
+首先，NetworkTransporter 类，作为一个底层网络通信类，我们希望他的功能尽可能通用，而不是只服务与下载 html，所以，我们不应该直接依赖太具体的发送对象 HtmlRequest。
+
+```Java
+public class NetworkTransporter {
+    // 省略属性和其他方法...
+    public Byte[] send(String address, Byte[] data) {
+      //...
+    }
+}
+```
+
+再看 HTMLDownloader 类因为修改NetworkTransporter 的 send() 函数定义，而这个类用到了 send() 函数，所以我们需要对它做相应的修改。
+
+```Java
+public class HtmlDownloader {
+  private NetworkTransporter transporter;//通过构造函数或IOC注入
+  
+  // HtmlDownloader这里也要有相应的修改
+  public Html downloadHtml(String url) {
+    HtmlRequest htmlRequest = new HtmlRequest(url);
+    Byte[] rawHtml = transporter.send(
+      htmlRequest.getAddress(), htmlRequest.getContent().getBytes());
+    return new Html(rawHtml);
+  }
+}
+```
+
+对于 `Document` 类，构造函数中的 `downloader.downloadHtml()` 逻辑复杂，耗时长，不应该放到构造函数中，会影响代码的可测试性。第二，`HtmlDownloader` 对象在构造函数中通过 new 来创建，违反了基于接口而非实现编程的设计思想，也会影响到代码的可测试性。第三，从业务含义上来讲，Document 网页文档没必要依赖 HtmlDownloader 类，违背了迪米特法则。
+
+修改后代码如下所示：
+
+```Java
+public class Document {
+  private Html html;
+  private String url;
+  
+  public Document(String url, Html html) {
+    this.html = html;
+    this.url = url;
+  }
+  //...
+}
+
+// 通过一个工厂方法来创建Document
+public class DocumentFactory {
+  private HtmlDownloader downloader;
+  
+  public DocumentFactory(HtmlDownloader downloader) {
+    this.downloader = downloader;
+  }
+  
+  public Document createDocument(String url) {
+    Html html = downloader.downloadHtml(url);
+    return new Document(url, html);
+  }
+}
+```
+
